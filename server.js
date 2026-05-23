@@ -23,7 +23,7 @@ const io = require("socket.io")(server, {
 });
 
 socketHandler(io);
-
+app.set("io", io);
 connectDB();
 
 app.use(cors());

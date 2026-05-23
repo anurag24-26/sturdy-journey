@@ -1,6 +1,7 @@
 const Post = require("../models/Post");
 const uploadToB2 = require("../services/uploadService");
-
+const Notification = require("../models/Notification");
+const User = require("../models/User");
 
 // CREATE POST
 const createPost = async (req, res) => {
@@ -27,6 +28,30 @@ const createPost = async (req, res) => {
 
     const populatedPost = await Post.findById(post._id)
       .populate("user", "name email");
+      const io = req.app.get("io");
+
+const users = await User.find({
+  _id: { $ne: req.user.id },
+});
+
+for (const user of users) {
+
+  const notification = await Notification.create({
+    sender: req.user.id,
+    receiver: user._id,
+    type: "post",
+    post: post._id,
+    text: `${populatedPost.user.name} posted a new memory ❤️`,
+  });
+
+  if (user.socketId) {
+    io.to(user.socketId).emit(
+      "new_notification",
+      notification
+    );
+  }
+}
+
 
     res.json(populatedPost);
 
@@ -95,6 +120,31 @@ const addComment = async (req, res) => {
 
     const newComment =
       updatedPost.comments[updatedPost.comments.length - 1];
+      const io = req.app.get("io");
+
+const postOwner = await User.findById(post.user);
+
+if (
+  postOwner &&
+  postOwner._id.toString() !== req.user.id
+) {
+
+  const notification = await Notification.create({
+    sender: req.user.id,
+    receiver: postOwner._id,
+    type: "comment",
+    post: post._id,
+    text: `${newComment.user.name} commented on your post 💬`,
+  });
+
+  if (postOwner.socketId) {
+    io.to(postOwner.socketId).emit(
+      "new_notification",
+      notification
+    );
+  }
+}
+
 
     res.json(newComment);
 
