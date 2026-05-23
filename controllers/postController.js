@@ -3,7 +3,8 @@ const uploadToB2 = require("../services/uploadService");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
 const { sendPushNotification } = require("../sockets/socket");
-
+const getPrivateFileUrl =
+  require("../services/getPrivateFileUrl");
 // CREATE POST
 const createPost = async (req, res) => {
   try {
@@ -64,10 +65,29 @@ const getPosts = async (req, res) => {
       .populate("comments.user", "name email")
       .sort({ createdAt: -1 });
 
-    res.json(posts);
+    const updatedPosts =
+      await Promise.all(
+        posts.map(async (post) => {
+          const obj = post.toObject();
+
+          if (obj.mediaUrl) {
+            obj.mediaUrl =
+              await getPrivateFileUrl(
+                obj.mediaUrl
+              );
+          }
+
+          return obj;
+        })
+      );
+
+    res.json(updatedPosts);
   } catch (error) {
     console.log(error);
-    res.status(500).json({ message: "Server Error" });
+
+    res.status(500).json({
+      message: "Server Error",
+    });
   }
 };
 

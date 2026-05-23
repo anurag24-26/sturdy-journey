@@ -4,23 +4,34 @@ const fs = require("fs");
 const uploadToB2 = async (file) => {
   await b2.authorize();
 
-  const uploadUrlResponse = await b2.getUploadUrl({
-    bucketId: process.env.B2_BUCKET_ID,
-  });
+  const uploadUrlResponse =
+    await b2.getUploadUrl({
+      bucketId: process.env.B2_BUCKET_ID,
+    });
 
-  const uploadUrl = uploadUrlResponse.data.uploadUrl;
-  const uploadAuthToken = uploadUrlResponse.data.authorizationToken;
+  const uploadUrl =
+    uploadUrlResponse.data.uploadUrl;
 
-  const fileBuffer = fs.readFileSync(file.path);
+  const uploadAuthToken =
+    uploadUrlResponse.data.authorizationToken;
 
-  const response = await b2.uploadFile({
+  const fileBuffer =
+    fs.readFileSync(file.path);
+
+  const fileName =
+    `${Date.now()}-${file.originalname}`;
+
+  await b2.uploadFile({
     uploadUrl,
     uploadAuthToken,
-    fileName: `${Date.now()}-${file.originalname}`,
+    fileName,
     data: fileBuffer,
   });
 
-  return `https://f002.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${response.data.fileName}`;
+  fs.unlinkSync(file.path);
+
+  // IMPORTANT
+  return fileName;
 };
 
 module.exports = uploadToB2;
