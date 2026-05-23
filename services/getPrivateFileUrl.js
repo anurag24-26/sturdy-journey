@@ -4,30 +4,17 @@ const urlCache = new Map();
 
 /**
  * Robustly extract a clean fileName from whatever is stored in DB.
- * Handles:
- *   - plain filenames:  "1779524072906-abc.jpeg"
- *   - full B2 URLs:     "https://f002.backblazeb2.com/file/BUCKET/1779524072906-abc.jpeg"
- *   - signed URLs:      "https://f002.backblazeb2.com/file/BUCKET/1779524072906-abc.jpeg?Authorization=..."
- *   - double-encoded:   anything where the path segment itself starts with "https%3A" or "https:"
+ * Handles plain filenames, full B2 URLs, signed URLs, double-encoded URLs.
  */
 function extractFileName(raw) {
   if (!raw) return "";
 
-  // Strip query string (auth token, etc.)
   const withoutQuery = raw.split("?")[0];
 
-  // If it looks like a URL, pull everything after /file/BUCKET_NAME/
-  // This regex matches the last occurrence of /file/<anything>/ to be safe
-  const urlMatch = withoutQuery.match(
-    /\/file\/[^/]+\/(.+)$/
-  );
+  // Pull everything after /file/BUCKET_NAME/
+  const urlMatch = withoutQuery.match(/\/file\/[^/]+\/(.+)$/);
+  if (urlMatch) return decodeURIComponent(urlMatch[1]);
 
-  if (urlMatch) {
-    // Decode any percent-encoding (e.g. %2F → / for sub-folders)
-    return decodeURIComponent(urlMatch[1]);
-  }
-
-  // Already a plain filename — still decode just in case
   return decodeURIComponent(withoutQuery);
 }
 
@@ -35,9 +22,7 @@ const getPrivateFileUrl = async (fileName) => {
   try {
     if (!fileName) return "";
 
-    // Normalise whatever shape the DB stored
     const cleanName = extractFileName(fileName);
-
     if (!cleanName) return "";
 
     const now = Date.now();
@@ -48,7 +33,10 @@ const getPrivateFileUrl = async (fileName) => {
       return cached.url;
     }
 
-    await b2.authorize();
+    // authorize() returns the correct downloadUrl for your B2 region
+    const authRes = await b2.authorize();
+    // e.g. "https://f005.backblazeb2.com" — never hardcode this
+    const downloadUrl = authRes.data.downloadUrl;
 
     const authResponse = await b2.getDownloadAuthorization({
       bucketId: process.env.B2_BUCKET_ID,
@@ -56,21 +44,21 @@ const getPrivateFileUrl = async (fileName) => {
       validDurationInSeconds: 86400,
     });
 
-    // Encode special characters but keep forward-slashes readable
+    // Encode special chars but keep forward-slashes for sub-folder support
     const encodedName = encodeURIComponent(cleanName).replace(/%2F/g, "/");
 
     const url =
-      `https://f002.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}/${encodedName}` +
+      `${downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${encodedName}` +
       `?Authorization=${authResponse.data.authorizationToken}`;
 
     urlCache.set(cleanName, {
       url,
-      expiresAt: now + (86400 - 300) * 1000, // expire 5 min before token does
+      expiresAt: now + (86400 - 300) * 1000,
     });
 
     return url;
   } catch (e) {
-    console.log("B2 PRIVATE URL ERROR:", e);
+    console.error("B2 PRIVATE URL ERROR:", e.message);
     throw e;
   }
 };
