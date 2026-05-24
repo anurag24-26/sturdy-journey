@@ -29,6 +29,10 @@ app.use(morgan("dev"));
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postRoutes);
 
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
 app.get("/", (req, res) => {
   res.send("Private Memory API Running");
 });
